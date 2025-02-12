@@ -1,0 +1,69 @@
+# src/config/qdrant/collections.yaml
+
+collections:
+  test_embeddings:
+    vectors:
+      size: 1024  # Matches ModernBERT output dimension
+      distance: Cosine
+      on_disk: true
+    
+    optimizers_config:
+      default_segment_number: 2
+      indexing_threshold: 10000  # Smaller for test collection
+      memmap_threshold: 10000
+      max_segment_size: 50000
+    
+    payload_schema:
+      file_path:
+        type: "keyword"
+      last_modified:
+        type: "datetime"
+      chunk_index:
+        type: "integer"
+      total_chunks:
+        type: "integer"
+      is_complete:
+        type: "bool"
+  
+  writing_vectors:
+    vectors:
+      size: 1024  # Matches ModernBERT output dimension
+      distance: Cosine
+      on_disk: true
+    
+    optimizers_config:
+      default_segment_number: 2
+      indexing_threshold: 50000
+      memmap_threshold: 20000
+      max_segment_size: 100000
+    
+    quantization_config:
+      scalar_config:
+        type: "int8"
+        quantile: 0.99
+        always_ram: true
+    
+    hnsw_config:
+      m: 16
+      ef_construct: 100
+      full_scan_threshold: 10000
+    
+    payload_schema:
+      file_path:
+        type: "keyword"
+      last_modified:
+        type: "datetime"
+      chunk_index:
+        type: "integer"
+      total_chunks:
+        type: "integer"
+      is_complete:
+        type: "bool"
+      content_type:
+        type: "keyword"
+      project_id:
+        type: "keyword"
+      flow_state:
+        type: "float"
+      priority:
+        type: "integer"

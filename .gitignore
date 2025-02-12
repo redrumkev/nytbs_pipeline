@@ -1,0 +1,23 @@
+# Ignore environment variables
+.env
+
+# Ignore test data and results
+test_data/
+tests/results/
+
+# Ignore specific config directory
+src/config/modernbert/
+src/config/modernbert/pytorch_model.bin
+src/config/modernbert/tokenizer.json
+
+# Ignore all __pycache__ folders recursively
+__pycache__/
+**/__pycache__/
+
+# Optional: Ignore logs (if applicable)
+logs/
+*.log
+
+# project tree
+generate_tree.py
+project_tree.txt
