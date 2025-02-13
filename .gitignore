@@ -21,3 +21,6 @@ logs/
 # project tree
 generate_tree.py
 project_tree.txt
+
+# .clineignore to block access by CLINE to files
+.clineignore 
