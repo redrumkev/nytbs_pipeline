@@ -3,6 +3,7 @@ from pathlib import Path
 import asyncio
 import logging
 from typing import List, Dict, Any
+import json
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -92,14 +93,35 @@ async def run_integration_test():
         
         # Store embeddings
         logger.info("Storing new embeddings...")
+        ids = list(range(len(embeddings)))  # Assign IDs 0,1,2...
         success = await manager.store_embeddings(
             collection_name=collection_name,
             embeddings=embeddings,
-            metadata=metadata
+            metadata=metadata,
+            ids=ids  # Ensure IDs match retrieval expectations
         )
         
+        print(json.dumps({
+            "collection_name": collection_name,
+            "embeddings": [emb.tolist() for emb in embeddings[:3]],  # Convert tensor to list
+            "metadata": metadata[:3]
+        }, indent=2))
+
+
         if not success:
             raise RuntimeError("Failed to store embeddings")
+
+        # Manually retrieve a stored point to check if vector exists
+        point = manager.client.retrieve(
+            collection_name="test_embeddings",
+            ids=[0]  # Retrieve the point with ID 0
+        )
+        logger.info(f"\nRetrieved Point from Qdrant: {point}")
+
+
+        # Force optimization after inserting
+        logger.info("Optimizing collection to ensure vectors are indexed...")
+        await manager.optimize_collection(collection_name)
 
         # Test retrieval
         logger.info("4. Testing retrieval...")
@@ -117,6 +139,15 @@ async def run_integration_test():
             logger.info(f"\nResult {i+1}:")
             logger.info(f"Score: {result['score']:.3f}")
             logger.info(f"Text: {result['payload']['text'][:100]}...")
+
+        logger.info("\nRetrieving stored embeddings...")
+        stored_points = await manager.retrieve_all_points(collection_name)
+    
+        for i, point in enumerate(stored_points):
+            logger.info(f"\nPoint {i+1}:")
+            logger.info(f"ID: {point['id']}")
+            logger.info(f"Vector (first 5 dims): {point['vector']}")
+            logger.info(f"Metadata: {point['payload']}")
 
         # Get collection stats
         stats = await manager.get_collection_stats(collection_name)

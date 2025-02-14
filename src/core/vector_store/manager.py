@@ -27,20 +27,25 @@ class QdrantManager:
         collection_name: str,
         vector_size: int = 1024
     ) -> bool:
-        """Create a new collection"""
+        """Create a new collection with vector support"""
         try:
-            self.client.create_collection(
+            self.client.recreate_collection(  # Force recreation of collection
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(
                     size=vector_size,
                     distance=models.Distance.COSINE
-                )
+                ),
+                optimizers_config=models.OptimizersConfigDiff(  # Ensure Qdrant optimizes the index
+                    indexing_threshold=20000
+                ),
+                shard_number=1  # Ensure sharding is set
             )
+            logger.info(f"Collection '{collection_name}' created with vector support.")
             return True
         except Exception as e:
             logger.error(f"Failed to create collection: {str(e)}")
             return False
-            
+    
     async def delete_collection_points(self, collection_name: str) -> bool:
         """Delete all points in a collection"""
         try:
@@ -63,19 +68,34 @@ class QdrantManager:
             if isinstance(embeddings, torch.Tensor):
                 embeddings = embeddings.cpu().numpy()
 
+            # Debug: Print embeddings before storing
+            logger.info(f"DEBUG: Embeddings shape: {embeddings.shape}")
+            logger.info(f"DEBUG: First embedding sample (first 5 dims): {embeddings[0][:5]}")
+
             # Create points
             points = []
             for i, (embedding, meta) in enumerate(zip(embeddings, metadata)):
+                if embedding is None:
+                    logger.error(f"ERROR: Embedding at index {i} is None!")
+                    continue
+                
                 points.append(models.PointStruct(
                     id=i,
                     vector=embedding.tolist(),
                     payload=meta
                 ))
 
+            # Ensure points are not empty
+            if not points:
+                logger.error("ERROR: No valid points to store! Check embeddings input.")
+                return False
+
             # Store in batches
             batch_size = 100
             for i in range(0, len(points), batch_size):
                 batch = points[i:i + batch_size]
+                logger.info(f"DEBUG: Storing batch of {len(batch)} points in Qdrant...")
+                logger.info(f"DEBUG: First vector being sent to Qdrant (first 5 dims): {points[0].vector[:5]}")
                 self.client.upsert(
                     collection_name=collection_name,
                     points=batch
@@ -85,6 +105,21 @@ class QdrantManager:
 
         except Exception as e:
             logger.error(f"Failed to store embeddings: {str(e)}")
+            return False
+
+    async def optimize_collection(self, collection_name: str) -> bool:
+        """Trigger optimization by updating collection settings"""
+        try:
+            self.client.update_collection(
+                collection_name=collection_name,
+                optimizer_config=models.OptimizersConfigDiff(
+                    max_optimization_threads=2  # Set number of threads for optimization
+                )
+            )
+            logger.info(f"Collection '{collection_name}' optimization triggered.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to optimize collection: {str(e)}")
             return False
 
     async def search_similar(
@@ -128,3 +163,26 @@ class QdrantManager:
         except Exception as e:
             logger.error(f"Failed to get stats: {str(e)}")
             return {}
+
+    async def retrieve_all_points(self, collection_name: str) -> List[Dict[str, Any]]:
+        """Retrieve all stored embeddings"""
+        try:
+            points, next_page = self.client.scroll(
+                collection_name=collection_name,
+                scroll_filter=None,
+                limit=100
+            )
+
+            if points is None:
+                logger.error("No points returned from Qdrant. Check if data was inserted correctly.")
+                return []
+
+            return [{
+                "id": point.id,
+                "vector": point.vector[:5] if point.vector else None,  # Handle potential None
+                "payload": point.payload
+            } for point in points]
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve points: {str(e)}")
+            return []
