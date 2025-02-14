@@ -27,8 +27,8 @@ class TextChunker:
     def __init__(self, model_dir: Path):
         """Initialize with model tokenizer for accurate token counting"""
         self.tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
-        self.chunk_size = 768
-        self.overlap_size = 192
+        self.chunk_size = 512
+        self.overlap_size = 128
         
     def count_tokens(self, text: str) -> int:
         """Count tokens in text using model's tokenizer"""
