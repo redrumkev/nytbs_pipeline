@@ -60,7 +60,8 @@ class QdrantManager:
         self,
         collection_name: str,
         embeddings: torch.Tensor,
-        metadata: List[Dict[str, Any]]
+        metadata: List[Dict[str, Any]],
+        ids: Optional[List[int]] = None
     ) -> bool:
         """Store embeddings with metadata"""
         try:
@@ -74,13 +75,14 @@ class QdrantManager:
 
             # Create points
             points = []
-            for i, (embedding, meta) in enumerate(zip(embeddings, metadata)):
+            for idx, (embedding, meta) in enumerate(zip(embeddings, metadata)):
                 if embedding is None:
-                    logger.error(f"ERROR: Embedding at index {i} is None!")
+                    logger.error(f"ERROR: Embedding at index {idx} is None!")
                     continue
                 
+                point_id = ids[idx] if ids is not None else idx
                 points.append(models.PointStruct(
-                    id=i,
+                    id=point_id,
                     vector=embedding.tolist(),
                     payload=meta
                 ))
@@ -164,13 +166,49 @@ class QdrantManager:
             logger.error(f"Failed to get stats: {str(e)}")
             return {}
 
+    async def retrieve_point(
+        self,
+        collection_name: str,
+        point_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve a specific point with its vector"""
+        try:
+            point = self.client.retrieve(
+                collection_name=collection_name,
+                ids=[point_id],
+                with_vectors=True  # Always request vectors
+            )
+            
+            if not point or len(point) == 0:
+                logger.error(f"Point with ID {point_id} not found in collection {collection_name}")
+                return None
+                
+            point = point[0]  # Get first point since we only requested one
+            
+            # Debug logging
+            logger.info(f"Retrieved point {point_id}")
+            logger.info(f"Vector exists: {point.vector is not None}")
+            if point.vector:
+                logger.info(f"Vector sample (first 5 dims): {point.vector[:5]}")
+            
+            return {
+                "id": point.id,
+                "vector": point.vector,
+                "payload": point.payload
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve point {point_id}: {str(e)}")
+            return None
+
     async def retrieve_all_points(self, collection_name: str) -> List[Dict[str, Any]]:
         """Retrieve all stored embeddings"""
         try:
             points, next_page = self.client.scroll(
                 collection_name=collection_name,
                 scroll_filter=None,
-                limit=100
+                limit=100,
+                with_vectors=True  # Explicitly request vectors
             )
 
             if points is None:

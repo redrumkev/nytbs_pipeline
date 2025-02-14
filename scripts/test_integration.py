@@ -111,12 +111,21 @@ async def run_integration_test():
         if not success:
             raise RuntimeError("Failed to store embeddings")
 
-        # Manually retrieve a stored point to check if vector exists
-        point = manager.client.retrieve(
+        # Test point retrieval with vectors
+        logger.info("\nTesting point retrieval with vectors...")
+        point = await manager.retrieve_point(
             collection_name="test_embeddings",
-            ids=[0]  # Retrieve the point with ID 0
+            point_id=0  # Retrieve the first point
         )
-        logger.info(f"\nRetrieved Point from Qdrant: {point}")
+        
+        if point is None:
+            logger.error("Failed to retrieve point 0")
+        else:
+            logger.info(f"Successfully retrieved point {point['id']}")
+            logger.info(f"Vector exists: {point['vector'] is not None}")
+            if point['vector']:
+                logger.info(f"Vector sample (first 5 dims): {point['vector'][:5]}")
+            logger.info(f"Payload: {point['payload']}")
 
 
         # Force optimization after inserting
