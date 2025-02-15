@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 import re
 from transformers import AutoTokenizer
 from pathlib import Path
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChunkMetadata:
-    """Metadata for a text chunk"""
+    """Metadata for a text chunk."""
     is_complete_note: bool
     token_count: int
     chunk_index: Optional[int] = None
@@ -19,132 +19,99 @@ class ChunkMetadata:
 
 @dataclass
 class ProcessedChunk:
-    """A processed text chunk with its metadata"""
+    """A processed text chunk with its metadata."""
     text: str
     metadata: ChunkMetadata
 
 class TextChunker:
     def __init__(self, model_dir: Path):
-        """Initialize with model tokenizer for accurate token counting"""
         self.tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
-        self.chunk_size = 512
-        self.overlap_size = 128
-        
-    def count_tokens(self, text: str) -> int:
-        """Count tokens in text using model's tokenizer"""
-        return len(self.tokenizer.encode(text))
-        
-    def find_break_point(self, text: str, target_idx: int, window: int = 100) -> int:
-        """Find the best break point near the target index"""
-        # Define break points in order of preference
-        break_patterns = [
-            r'\n\n',     # Double newline (paragraph)
-            r'\.\s',     # End of sentence
-            r'\,\s',     # Comma
-            r'\s'        # Any whitespace
-        ]
-        
-        # Search within window before and after target
-        start = max(0, target_idx - window)
-        end = min(len(text), target_idx + window)
-        search_text = text[start:end]
-        
-        # Try each pattern in order of preference
-        for pattern in break_patterns:
-            matches = list(re.finditer(pattern, search_text))
-            if matches:
-                # Find closest match to target
-                closest = min(matches, key=lambda x: abs(x.start() + start - target_idx))
-                return closest.start() + start
-                
-        # If no good break point found, use target_idx
-        return target_idx
-        
+        self.chunk_size = 512        # Maximum tokens per chunk
+        self.overlap_size = 128        # Overlap (not used in this simplified version)
+        self.min_chunk_size = 50       # Minimum tokens per chunk
+
+    def clean_text(self, text: str) -> str:
+        """
+        Perform minimal cleaning on the text.
+        Removes common system path patterns while preserving overall structure,
+        including code blocks and headers.
+        """
+        # Remove Windows-style paths (e.g., "C:\Projects\...") and Unix paths from /etc, /var, or /usr
+        text = re.sub(r'(?:[A-Z]:\\[^\s]+)', '', text)
+        text = re.sub(r'(?:\/(?:etc|var|usr)\/[^\s]+)', '', text)
+        return text.strip()
+
+    def split_into_paragraphs(self, text: str) -> List[str]:
+        """
+        Splits the cleaned text into paragraphs based on double newlines.
+        This method preserves code blocks and header structures.
+        """
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        return paragraphs
+
+    def combine_paragraphs_into_chunks(self, paragraphs: List[str]) -> List[str]:
+        """
+        Combine paragraphs into chunks that do not exceed the target token length.
+        Paragraphs are concatenated with double newlines.
+        """
+        chunks = []
+        current_chunk = ""
+        for paragraph in paragraphs:
+            if current_chunk:
+                potential_chunk = current_chunk + "\n\n" + paragraph
+            else:
+                potential_chunk = paragraph
+            tokens = self.tokenizer.encode(potential_chunk)
+            if len(tokens) <= self.chunk_size:
+                current_chunk = potential_chunk
+            else:
+                # If current chunk exists and is long enough, add it as a chunk
+                if current_chunk and len(self.tokenizer.encode(current_chunk)) >= self.min_chunk_size:
+                    chunks.append(current_chunk.strip())
+                # Start a new chunk with the current paragraph
+                current_chunk = paragraph
+        if current_chunk and len(self.tokenizer.encode(current_chunk)) >= self.min_chunk_size:
+            chunks.append(current_chunk.strip())
+        return chunks
+
     def create_chunks(self, text: str, filename: Optional[str] = None) -> List[ProcessedChunk]:
-        """Process text into chunks with smart handling for short notes"""
-        token_count = self.count_tokens(text)
-        
-        # Handle short notes
-        if token_count < self.chunk_size:
-            return [ProcessedChunk(
-                text=text,
+        """
+        Clean the text, split it into paragraphs, combine paragraphs into chunks,
+        and then wrap each chunk with metadata.
+        """
+        cleaned_text = self.clean_text(text)
+        if not cleaned_text:
+            return []
+        paragraphs = self.split_into_paragraphs(cleaned_text)
+        chunk_texts = self.combine_paragraphs_into_chunks(paragraphs)
+        total_chunks = len(chunk_texts)
+        chunks = []
+        for idx, chunk in enumerate(chunk_texts):
+            tokens = self.tokenizer.encode(chunk)
+            if len(tokens) < self.min_chunk_size:
+                continue
+            chunks.append(ProcessedChunk(
+                text=chunk,
                 metadata=ChunkMetadata(
-                    is_complete_note=True,
-                    token_count=token_count,
-                    chunk_index=0,
-                    total_chunks=1,
+                    is_complete_note=(total_chunks == 1),
+                    token_count=len(tokens),
+                    chunk_index=idx,
+                    total_chunks=total_chunks,
                     original_file=filename
                 )
-            )]
-            
-        # Process longer texts into chunks
-        chunks = []
-        current_pos = 0
-        chunk_index = 0
-        
-        while current_pos < len(text):
-            # Calculate end position for current chunk
-            if current_pos == 0:
-                # First chunk: no leading overlap
-                target_end = self._find_chunk_end(text, current_pos, self.chunk_size)
-            else:
-                # Include overlap
-                target_end = self._find_chunk_end(text, current_pos, self.chunk_size - self.overlap_size)
-            
-            # Find natural break point
-            end_pos = self.find_break_point(text, target_end)
-            
-            # Extract chunk
-            chunk_text = text[current_pos:end_pos].strip()
-            if chunk_text:  # Only add non-empty chunks
-                chunks.append(ProcessedChunk(
-                    text=chunk_text,
-                    metadata=ChunkMetadata(
-                        is_complete_note=False,
-                        token_count=self.count_tokens(chunk_text),
-                        chunk_index=chunk_index,
-                        total_chunks=None,  # Will set after all chunks created
-                        original_file=filename
-                    )
-                ))
-                chunk_index += 1
-            
-            # Move position for next chunk
-            current_pos = max(current_pos + 1, end_pos - self.overlap_size)
-            
-        # Update total_chunks in metadata
-        total_chunks = len(chunks)
-        for chunk in chunks:
-            chunk.metadata.total_chunks = total_chunks
-            
+            ))
         return chunks
-        
-    def _find_chunk_end(self, text: str, start: int, length: int) -> int:
-        """Find position that approximately contains desired token length"""
-        # Estimate characters per token (rough approximation)
-        chars_per_token = 4
-        target_chars = length * chars_per_token
-        
-        # Don't exceed text length
-        return min(start + target_chars, len(text))
-        
+
     def process_file(self, file_path: Path) -> List[ProcessedChunk]:
-        """Process a file into chunks"""
+        """
+        Reads the file and processes its content into chunks.
+        """
         try:
-            text = file_path.read_text(encoding='utf-8')
-            return self.create_chunks(text, filename=file_path.name)
+            content = file_path.read_text(encoding='utf-8')
+            if not content.strip():
+                logger.warning(f"Empty or invalid content in {file_path}")
+                return []
+            return self.create_chunks(content, filename=file_path.name)
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {str(e)}")
             return []
-            
-    def process_batch(self, texts: List[str], filenames: Optional[List[str]] = None) -> List[ProcessedChunk]:
-        """Process multiple texts into chunks"""
-        if filenames is None:
-            filenames = [None] * len(texts)
-            
-        all_chunks = []
-        for text, filename in zip(texts, filenames):
-            chunks = self.create_chunks(text, filename)
-            all_chunks.extend(chunks)
-            
-        return all_chunks

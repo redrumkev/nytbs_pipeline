@@ -1,0 +1,74 @@
+# NYTBS Pipeline Project - .clinerules
+
+## Core Principles
+
+- Prioritize frictionless operation and invisible complexity.
+- Focus on semantic search capabilities for Phase 1.
+- Ensure all components are well-documented and tested.
+- Use UUIDs for all entities to maintain data consistency.
+
+## Code Style
+
+- Follow PEP 8 style guidelines.
+- Use descriptive variable and function names.
+- Add type hints to all functions and methods.
+- Include docstrings for all classes, functions, and methods.
+- Prioritize asynchronous operations (async/await) where appropriate.
+- Aim for modular and reusable code.
+
+## Command Line
+
+- Use conda env nytbs_pipeline for all executions.
+- Refer to docs/nytbs_pipeline_minimal.yml
+- Use what is already installed
+- If new dependencies are required; prompt user, explicitly stating why!
+
+## Error Handling
+
+- Implement robust error handling for all operations.
+- Log all errors with clear and informative messages.
+- Use custom exceptions where appropriate.
+- Handle potential Qdrant connection errors gracefully.
+- Handle potential ModernBERT processing errors gracefully.
+
+## Testing
+
+- Write unit tests for all core components.
+- Write integration tests for interactions between components.
+- Use the `tests/` directory for all test files.
+- Ensure tests are comprehensive and cover edge cases.
+
+## Qdrant Specific
+
+- Use the `QdrantManager` class for all interactions with Qdrant.
+- Always use the `writing_vectors` collection for Phase 1.
+- Ensure embeddings are normalized before storing in Qdrant.
+- Use appropriate metadata fields for filtering and retrieval.
+
+## ModernBERT Specific
+
+- Use the `ModernBERTProcessor` class for all embedding generation.
+- Use FP16 precision for optimal performance on the RTX 4090.
+- Manage GPU memory carefully to avoid exceeding limits.
+- Use batch processing where possible for efficiency.
+
+## FastAPI Specific
+- Use the `/api/search` as the primary search endpoint.
+- Adhere to the request and response formatting as outlined in the `fastapi_component_spec.md` file.
+
+## TextChunker Specific
+- Use `text_chunker.py` to process all text into appropriate sized chunks.
+
+## Documentation
+- Keep documentation in sync with changes to files.
+
+## Security
+- DO NOT store any API keys or secrets in the code. Use environment variables instead.
+- DO NOT include any sensitive data in logs or error messages.
+
+## File Handling
+
+DO NOT read or modify:
+
+-   .env files
+-   `memory-bank/` (except when explicitly instructed to update documentation)

@@ -1,0 +1,41 @@
+name: nytbs_pipeline
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - transformers
+  - torch
+  - sentence-transformers
+  - tqdm
+  - uvicorn
+  - fastapi
+  - pydantic
+  - requests
+  - matplotlib
+  - seaborn
+  - rich
+  - typer
+  - sqlalchemy
+  - postgresql
+  - neo4j
+  - qdrant-client
+  - prefect
+  - elasticsearch
+  - redis
+  - docker
+  - boto3
+  - pip:
+      - openai
+      - google-cloud-storage
+      - azure-storage-blob
+      - huggingface-hub
+      - gradio
+      - jsonlines
+      - streamlit
+
+(Updated 02-15-2025 v1.0)

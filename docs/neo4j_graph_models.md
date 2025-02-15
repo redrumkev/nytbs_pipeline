@@ -1,1 +1,0 @@
-# Neo4j Graph Models
